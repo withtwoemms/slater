@@ -1,3 +1,8 @@
+# Slater
+.uv-installed
+.uv_cache/
+.archive/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
