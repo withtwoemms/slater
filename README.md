@@ -1,2 +1,2 @@
 # slater
-an actionpacked coding agent via langchain + chatgpt
+a Fact-governed agent framework for building deterministic & auditable autonomous systems.
