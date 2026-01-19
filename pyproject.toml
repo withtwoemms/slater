@@ -1,0 +1,38 @@
+[project]
+name = "slater"
+version = "0.1.0"
+description = "a Fact-governed agent framework for building deterministic & auditable autonomous systems."
+authors = [
+    { name = "Emmanuel I. Obi", email = "withtwoemms@gmail.com" }
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "actionpack>=1.7.15",
+    "numpy>=2.2.6",
+    "openai>=2.11.0",
+    "pydantic>=2.12.5",
+    "pyyaml>=6.0.3",
+    "sqliteai-vector>=0.9.52",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=9.0.2",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.uv]
+python-preference = "managed"
+cache-dir = ".uv_cache"
+concurrent-downloads = 5
+concurrent-installs = 5
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["slater"]
