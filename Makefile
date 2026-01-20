@@ -10,6 +10,9 @@ CYAN := \033[0;36m
 YELLOW := \033[1;33m
 RESET := \033[0m
 
+# --- State Directory ---
+SLATER_STATE ?= .slater_state
+
 # --- Help Command ---
 help:
 	@echo "\n${YELLOW}Available commands:${RESET}\n"
@@ -19,6 +22,7 @@ help:
 	@echo "  ${CYAN}unit-tests${RESET}        - Run unit tests"
 	@echo "  ${CYAN}integration-tests${RESET} - Run container tests"
 	@echo "  ${CYAN}clean${RESET}             - Clean build artifacts and dependency state"
+	@echo "  ${CYAN}clean-state${RESET}       - Remove agent state and history (${SLATER_STATE}/)"
 	@echo
 
 ${UV_INSTALLED}:
@@ -79,5 +83,14 @@ clean: clean-uv
 	@rm -rf ${UV_VENV} .uv_cache .pytest_cache
 	@find . -type d -name __pycache__ -exec rm -rf {} +
 
+clean-state:
+	@if [ -d "${SLATER_STATE}" ]; then \
+		echo "${YELLOW}Removing agent state directory (${SLATER_STATE})...${RESET}"; \
+		rm -rf ${SLATER_STATE}; \
+		echo "${GREEN}State cleared.${RESET}"; \
+	else \
+		echo "${CYAN}No state directory found; nothing to clean.${RESET}"; \
+	fi
 
-.PHONY: help install install-test requirements dev build unit-tests integration-tests tests venv clean-uv clean
+
+.PHONY: help install install-test requirements dev build unit-tests integration-tests tests venv clean-uv clean clean-state
