@@ -1,0 +1,21 @@
+repo:
+  root: .
+  ignore:
+    - .git
+    - .venv
+
+analysis:
+  max_files: 500
+  depth: shallow
+
+llm:
+  provider: openai
+  model: gpt-4.1-mini
+  temperature: 0.2
+
+validation:
+  run_tests: true
+  test_command: pytest
+
+patching:
+  strategy: incremental
