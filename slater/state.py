@@ -10,6 +10,7 @@ from slater.types import Fact, Facts, IterationFacts, KnowledgeFact
 class StateStore(Protocol):
     def save(self, agent_id: str, iteration_facts: IterationFacts, persistent_facts: Facts) -> None: ...
     def load(self, agent_id: str) -> Facts: ...
+    def history(self, agent_id: str) -> list[IterationFacts]: ...
     def bootstrap(self, agent_id: str, config: BootstrapConfig) -> None:
         """
         Seed initial state from bootstrap config.
@@ -136,6 +137,16 @@ class InMemoryStateStore:
         """
         Persist IterationFacts and update persistent Facts.
         """
+        # Add timestamp if not already present
+        if iteration_facts.timestamp is None:
+            # Create new IterationFacts with timestamp (frozen dataclass)
+            iteration_facts = IterationFacts(
+                iteration=iteration_facts.iteration,
+                phase=iteration_facts.phase,
+                by_action=iteration_facts.by_action,
+                timestamp=time.time(),
+            )
+
         # Record iteration history
         self._history.setdefault(agent_id, []).append(iteration_facts)
 
@@ -182,18 +193,19 @@ class FileSystemStateStore:
         )
         tmp.replace(state_path)
 
-        # Append iteration history (audit trail)
+        # Add timestamp if not already present
+        if iteration_facts.timestamp is None:
+            iteration_facts = IterationFacts(
+                iteration=iteration_facts.iteration,
+                phase=iteration_facts.phase,
+                by_action=iteration_facts.by_action,
+                timestamp=time.time(),
+            )
+
+        # Append iteration history (audit trail) using IterationFacts.serialize()
         history_path = self._history_path(agent_id)
         with history_path.open("a") as f:
-            f.write(json.dumps({
-                "iteration": iteration_facts.iteration,
-                "phase": iteration_facts.phase.name if iteration_facts.phase else None,
-                "timestamp": time.time(),
-                "facts_by_action": {
-                    action: facts.serialize()
-                    for action, facts in iteration_facts.by_action.items()
-                }
-            }) + "\n")
+            f.write(json.dumps(iteration_facts.serialize()) + "\n")
 
     def _history_path(self, agent_id: str) -> Path:
         return self.root / f"{agent_id}_history.jsonl"
