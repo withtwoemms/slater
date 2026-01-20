@@ -421,10 +421,6 @@ issue_triage_spec = AgentSpec(
 ### Diagram
 
 ```mermaid
----
-  config:
-    layout: elk
----
 stateDiagram-v2
     [*] --> NEEDS_CONTEXT
     NEEDS_CONTEXT --> READY_TO_CONTINUE
@@ -493,10 +489,6 @@ service_monitor_spec = AgentSpec(
 ### Diagram
 
 ```mermaid
----
-  config:
-    layout: elk
----
 stateDiagram-v2
     [*] --> INITIALIZING
     INITIALIZING --> MONITORING : initialized
