@@ -398,12 +398,12 @@ class Validate(SlaterAction):
 
         if errors:
             return Facts(
-                validation_passed=ProgressFact(key="validation_passed", value=False),
-                validation_errors=KnowledgeFact(key="validation_errors", value=errors),
+                validation_passed=ProgressFact(key="validation_passed", value=False, scope="session"),
+                validation_errors=KnowledgeFact(key="validation_errors", value=errors, scope="session"),
             )
 
         return Facts(
-            validation_passed=ProgressFact(key="validation_passed", value=True),
+            validation_passed=ProgressFact(key="validation_passed", value=True, scope="session"),
         )
 
 
