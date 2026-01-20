@@ -210,15 +210,13 @@ class FileSystemStateStore:
     def _history_path(self, agent_id: str) -> Path:
         return self.root / f"{agent_id}_history.jsonl"
 
-    def history(self, agent_id: str) -> list[dict]:
+    def history(self, agent_id: str) -> list[IterationFacts]:
         """
         Load iteration history for post-run analysis.
 
-        Returns list of iteration records, each containing:
-        - iteration: int
-        - phase: str | None
-        - timestamp: float
-        - facts_by_action: Dict[str, Dict[str, dict]]
+        Returns list of IterationFacts. Note that `phase` will be a string
+        (the enum member name) rather than an Enum, since we cannot reconstruct
+        the original enum class from storage.
         """
         history_path = self._history_path(agent_id)
         if not history_path.exists():
@@ -228,7 +226,7 @@ class FileSystemStateStore:
         with history_path.open("r") as f:
             for line in f:
                 if line.strip():
-                    records.append(json.loads(line))
+                    records.append(IterationFacts.deserialize(json.loads(line)))
         return records
 
     def bootstrap(self, agent_id: str, config: BootstrapConfig) -> None:
