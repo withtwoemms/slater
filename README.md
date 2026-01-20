@@ -148,7 +148,7 @@ slater/
 │   └── integration/     # Integration tests
 ├── docs/                # Documentation
 │   ├── adr/             # Architecture Decision Records
-│   └── slater_user_guide_v4.md
+│   └── user-guide.md
 ├── pyproject.toml
 ├── Makefile
 └── README.md
@@ -156,7 +156,7 @@ slater/
 
 ## Documentation
 
-- [User Guide](docs/slater_user_guide_v4.md) — Comprehensive guide to designing agents
+- [User Guide](docs/user-guide.md) — Comprehensive guide to designing agents
 - [ADR-001: Dynamic Phase Enums](docs/adr/001-dynamic-phase-enums.md) — PhaseEnum design rationale
 
 ## License
