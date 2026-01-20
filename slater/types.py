@@ -7,6 +7,7 @@ from typing import (
     Dict,
     Iterator,
     Mapping,
+    Optional,
     Protocol,
     Sequence,
     Literal,
@@ -188,10 +189,49 @@ class Facts(dict[str, FactsValue]):
 class IterationFacts:
     """
     Provenance-preserving record of Facts asserted in a single iteration.
+
+    The `phase` field accepts both Enum members (in-memory) and strings
+    (when deserialized from storage). This allows consistent return types
+    from both InMemoryStateStore and FileSystemStateStore.
     """
     iteration: int = 0
-    phase: Union[Enum, None] = None
+    phase: Union[Enum, str, None] = None
     by_action: Mapping[str, Facts] = field(default_factory=dict)
+    timestamp: Optional[float] = None
+
+    def serialize(self) -> dict:
+        """
+        Serialize to JSON-safe dict for storage.
+
+        Phase enum members are converted to their string names.
+        """
+        return {
+            "iteration": self.iteration,
+            "phase": self.phase.name if isinstance(self.phase, Enum) else self.phase,
+            "timestamp": self.timestamp,
+            "by_action": {
+                action: facts.serialize()
+                for action, facts in self.by_action.items()
+            },
+        }
+
+    @classmethod
+    def deserialize(cls, data: dict) -> "IterationFacts":
+        """
+        Reconstitute from serialized form.
+
+        Note: Phase is stored as string name (enum cannot be reconstructed
+        without access to the original enum class).
+        """
+        return cls(
+            iteration=data["iteration"],
+            phase=data.get("phase"),  # string or None
+            timestamp=data.get("timestamp"),
+            by_action={
+                action: Facts.deserialize(facts_dict)
+                for action, facts_dict in data.get("by_action", {}).items()
+            },
+        )
 
 
 class LLMClient(Protocol):
