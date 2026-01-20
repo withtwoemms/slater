@@ -343,14 +343,14 @@ class ApplyPatch(SlaterAction):
             patch_file.write_text("\n".join(lines))
 
             return Facts(
-                patch_applied=ProgressFact(key="patch_applied", value=True),
-                patch_summary=KnowledgeFact(key="patch_summary", value=f"Wrote refactoring plan to {patch_file.name}"),
+                patch_applied=ProgressFact(key="patch_applied", value=True, scope="session"),
+                patch_summary=KnowledgeFact(key="patch_summary", value=f"Wrote refactoring plan to {patch_file.name}", scope="session"),
             )
 
         except Exception as exc:
             return Facts(
-                patch_applied=ProgressFact(key="patch_applied", value=False),
-                patch_errors=KnowledgeFact(key="patch_errors", value=[str(exc)]),
+                patch_applied=ProgressFact(key="patch_applied", value=False, scope="session"),
+                patch_errors=KnowledgeFact(key="patch_errors", value=[str(exc)], scope="session"),
             )
 
 
