@@ -434,6 +434,49 @@ class TestStateStoreInterchangeability:
             assert isinstance(result["data"], Fact)
             assert result["data"].value == "value"
 
+    def test_both_stores_return_iteration_facts_from_history(self, tmp_path):
+        """Both implementations return list[IterationFacts] from history()."""
+        from slater.state import FileSystemStateStore
+
+        stores = [
+            InMemoryStateStore(),
+            FileSystemStateStore(root=tmp_path / "fs"),
+        ]
+
+        for store in stores:
+            # Initialize
+            if isinstance(store, InMemoryStateStore):
+                store._persistent["agent1"] = Facts()
+
+            # Save an iteration
+            store.save(
+                agent_id="agent1",
+                iteration_facts=IterationFacts(
+                    iteration=1,
+                    phase=Phase.READY_TO_CONTINUE,
+                    by_action={
+                        "TestAction": Facts(
+                            result=Fact(key="result", value="done", scope="persistent"),
+                        ),
+                    },
+                ),
+                persistent_facts=Facts(),
+            )
+
+            # Both must return list[IterationFacts]
+            history = store.history("agent1")
+            assert len(history) == 1
+            record = history[0]
+
+            # Verify it's an IterationFacts instance
+            assert isinstance(record, IterationFacts)
+            assert record.iteration == 1
+            assert record.timestamp is not None
+
+            # Verify by_action contains Facts
+            assert "TestAction" in record.by_action
+            assert isinstance(record.by_action["TestAction"], Facts)
+
 
 # ----------------------------------------------------------------------------
 # Issue 5: Bootstrap handles partial config gracefully
