@@ -146,7 +146,7 @@ class ProposePlan(SlaterAction):
 
         # ---- return value (actionpack wraps in Result) ----
         return Facts(
-            plan=KnowledgeFact(key="plan", value=plan),
+            plan=KnowledgeFact(key="plan", value=plan, scope="session"),
             plan_ready=ProgressFact(key="plan_ready", value=True, scope="session"),
         )
 
