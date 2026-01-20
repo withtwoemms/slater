@@ -290,7 +290,7 @@ class TestFileSystemStateStoreHistory:
         assert history_path.exists()
 
     def test_history_contains_iteration_data(self, tmp_path):
-        """history() returns iteration records with expected fields."""
+        """history() returns IterationFacts with expected fields."""
         from slater.state import FileSystemStateStore
 
         store = FileSystemStateStore(root=tmp_path)
@@ -315,10 +315,10 @@ class TestFileSystemStateStoreHistory:
 
         assert len(history) == 1
         record = history[0]
-        assert record["iteration"] == 1
-        assert record["phase"] == "READY_TO_CONTINUE"
-        assert "timestamp" in record
-        assert "ActionA" in record["facts_by_action"]
+        assert record.iteration == 1
+        assert record.phase == "READY_TO_CONTINUE"  # String after deserialization
+        assert record.timestamp is not None
+        assert "ActionA" in record.by_action
 
     def test_history_appends_multiple_iterations(self, tmp_path):
         """save() appends to history, preserving all iterations."""
@@ -351,10 +351,10 @@ class TestFileSystemStateStoreHistory:
         history = store.history("agent1")
 
         assert len(history) == 2
-        assert history[0]["iteration"] == 1
-        assert history[0]["phase"] == "READY_TO_CONTINUE"
-        assert history[1]["iteration"] == 2
-        assert history[1]["phase"] == "TASK_COMPLETE"
+        assert history[0].iteration == 1
+        assert history[0].phase == "READY_TO_CONTINUE"
+        assert history[1].iteration == 2
+        assert history[1].phase == "TASK_COMPLETE"
 
     def test_history_empty_for_new_agent(self, tmp_path):
         """history() returns empty list for agent with no history."""
@@ -366,8 +366,8 @@ class TestFileSystemStateStoreHistory:
 
         assert history == []
 
-    def test_history_facts_are_serialized(self, tmp_path):
-        """facts_by_action contains serialized Fact dicts."""
+    def test_history_facts_are_deserialized(self, tmp_path):
+        """by_action contains deserialized Facts objects."""
         from slater.state import FileSystemStateStore
 
         store = FileSystemStateStore(root=tmp_path)
@@ -387,13 +387,14 @@ class TestFileSystemStateStoreHistory:
         )
 
         history = store.history("agent1")
-        facts_dict = history[0]["facts_by_action"]["ActionA"]["data"]
+        facts = history[0].by_action["ActionA"]
+        data_fact = facts["data"]
 
-        # Should be serialized dict, not Fact object
-        assert isinstance(facts_dict, dict)
-        assert facts_dict["key"] == "data"
-        assert facts_dict["value"] == {"nested": "value"}
-        assert facts_dict["scope"] == "session"
+        # Should be deserialized Fact object
+        assert isinstance(data_fact, Fact)
+        assert data_fact.key == "data"
+        assert data_fact.value == {"nested": "value"}
+        assert data_fact.scope == "session"
 
 
 # ----------------------------------------------------------------------------
