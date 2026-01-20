@@ -287,10 +287,6 @@ HelloAgent’s AgentSpec serves as a minimal, canonical example of how `slater` 
 ### Diagram
 
 ```mermaid
----
-  config:
-    layout: elk
----
 stateDiagram-v2
     [*] --> START
     START --> DONE : said_hello
@@ -357,10 +353,6 @@ repo_refactor_spec = AgentSpec(
 ### Diagram
 
 ```mermaid
----
-  config:
-    layout: elk
----
 stateDiagram-v2
     [*] --> NEEDS_CONTEXT
     NEEDS_CONTEXT --> READY_TO_CONTINUE : context_ready & analysis_ready
