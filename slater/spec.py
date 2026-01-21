@@ -6,13 +6,14 @@ behavior that can be validated, visualized, and executed.
 """
 
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, Set, Type
 
 from slater.phases import PhaseRule
 from slater.policies import ControlPolicy, TransitionPolicy
 from slater.procedures import ProcedureTemplate
+from slater.validation import FactScopeError, validate_fact_scopes
 
 
 @dataclass
@@ -28,6 +29,7 @@ class AgentSpec:
     - TransitionPolicy references valid Phases
     - PhaseRules are deterministic (no overlaps)
     - ControlPolicy keys are consistent with expected fact types
+    - Facts referenced in policies are emitted with durable scope (if enabled)
     """
 
     name: str
@@ -36,6 +38,10 @@ class AgentSpec:
     control_policy: ControlPolicy
     transition_policy: TransitionPolicy
     procedures: Dict[Enum, ProcedureTemplate]
+
+    # Enable fact scope validation (validates that policy-referenced facts
+    # are declared in action `emits` with durable scope)
+    validate_emissions: bool = True
 
     def __post_init__(self):
         """Validate the spec at construction."""
@@ -48,6 +54,9 @@ class AgentSpec:
         self._validate_procedures()
         self._validate_transition_policy()
         self._validate_control_policy()
+
+        if self.validate_emissions:
+            self._validate_fact_scopes()
 
     def _validate_name_and_version(self):
         """Ensure name and version are valid."""
@@ -153,6 +162,32 @@ class AgentSpec:
                 f"ControlPolicy has keys in both completion_keys and failure_keys: "
                 f"{completion_and_failure}"
             )
+
+    def _validate_fact_scopes(self):
+        """
+        Validate that facts referenced in policies are emitted with durable scope.
+
+        This catches scope bugs at spec construction time:
+        - Transition rules referencing iteration-scoped facts (infinite loops)
+        - Control policy referencing undeclared facts (KeyError at runtime)
+
+        Actions must declare emissions via EmissionSpec for this validation to work.
+        """
+        issues = validate_fact_scopes(
+            procedures=self.procedures,
+            transition_policy=self.transition_policy,
+            control_policy=self.control_policy,
+        )
+
+        # Only raise on errors, not warnings
+        errors = [i for i in issues if i.severity == "error"]
+        if errors:
+            raise FactScopeError(errors)
+
+        # Log warnings but don't fail
+        warnings_list = [i for i in issues if i.severity == "warning"]
+        for issue in warnings_list:
+            warnings.warn(str(issue), UserWarning, stacklevel=3)
 
     # ---- Introspection / Debugging ----
 
