@@ -98,6 +98,12 @@ class ProposePlan(SlaterAction):
     requires_state = True
     requires_context = True
 
+    # Emission contract: what this action produces
+    emits = EmissionSpec(
+        plan=Emission("session", KnowledgeFact),
+        plan_ready=Emission("session", ProgressFact),
+    )
+
     def instruction(self) -> Facts:
         # ---- read from iteration context ----
 
@@ -166,10 +172,10 @@ class ProposePlan(SlaterAction):
             ],
         }
 
-        # ---- return value (actionpack wraps in Result) ----
-        return Facts(
-            plan=KnowledgeFact(key="plan", value=plan, scope="session"),
-            plan_ready=ProgressFact(key="plan_ready", value=True, scope="session"),
+        # ---- build Facts using declared emission contract ----
+        return self.emits.build(
+            plan=plan,
+            plan_ready=True,
         )
 
 
