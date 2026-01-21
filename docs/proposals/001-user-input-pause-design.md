@@ -1,4 +1,8 @@
-# Design Proposal: Pausing Slater Agents for User Input
+# Proposal 001: Pausing Slater Agents for User Input
+
+**Status:** Draft
+**Created:** 2026-01-20
+**Authors:** slater contributors
 
 ## Overview
 
