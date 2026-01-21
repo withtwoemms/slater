@@ -4,17 +4,39 @@ from actionpack import Action
 
 from slater.context import IterationContextView
 from slater.state import IterationState
-from slater.types import Facts, KnowledgeFact, ProgressFact
+from slater.types import (
+    Emission,
+    EmissionSpec,
+    Facts,
+    KnowledgeFact,
+    ProgressFact,
+)
 
 
 class SlaterAction(Action):
     """
     Immutable Action template.
     Materialized instances may have state and/or context bound.
+
+    Subclasses should declare their emissions via the `emits` class attribute:
+
+        class MyAction(SlaterAction):
+            emits = EmissionSpec(
+                result=Emission("session", KnowledgeFact),
+                ready=Emission("session", ProgressFact),
+            )
+
+            def instruction(self) -> Facts:
+                return self.emits.build(result=..., ready=...)
+
+    This ensures the emission contract is declared once and validated at build time.
     """
 
     requires_state: bool = False
     requires_context: bool = False
+
+    # Emission declaration - subclasses override with their EmissionSpec
+    emits: EmissionSpec | None = None
 
     _state: IterationState | None = None
     _ctx: IterationContextView | None = None
