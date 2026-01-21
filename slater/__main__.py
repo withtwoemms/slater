@@ -86,6 +86,7 @@ def main():
             PhaseRule(
                 enter=Phase.PROCEDURE_SUCCEEDED,
                 when_all=frozenset({"plan_ready"}),
+                when_none=frozenset({"validation_passed"}),
             ),
             PhaseRule(
                 enter=Phase.PROCEDURE_FAILED,
@@ -93,7 +94,7 @@ def main():
             ),
             PhaseRule(
                 enter=Phase.TASK_COMPLETE,
-                when_all=frozenset({"task_complete"}),
+                when_all=frozenset({"validation_passed"}),
             ),
         ],
         default=Phase.NEEDS_CONTEXT,

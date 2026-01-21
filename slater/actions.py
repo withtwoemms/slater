@@ -146,8 +146,8 @@ class ProposePlan(SlaterAction):
 
         # ---- return value (actionpack wraps in Result) ----
         return Facts(
-            plan=KnowledgeFact(key="plan", value=plan),
-            plan_ready=ProgressFact(key="plan_ready", value=True),
+            plan=KnowledgeFact(key="plan", value=plan, scope="session"),
+            plan_ready=ProgressFact(key="plan_ready", value=True, scope="session"),
         )
 
 
@@ -343,14 +343,14 @@ class ApplyPatch(SlaterAction):
             patch_file.write_text("\n".join(lines))
 
             return Facts(
-                patch_applied=ProgressFact(key="patch_applied", value=True),
-                patch_summary=KnowledgeFact(key="patch_summary", value=f"Wrote refactoring plan to {patch_file.name}"),
+                patch_applied=ProgressFact(key="patch_applied", value=True, scope="session"),
+                patch_summary=KnowledgeFact(key="patch_summary", value=f"Wrote refactoring plan to {patch_file.name}", scope="session"),
             )
 
         except Exception as exc:
             return Facts(
-                patch_applied=ProgressFact(key="patch_applied", value=False),
-                patch_errors=KnowledgeFact(key="patch_errors", value=[str(exc)]),
+                patch_applied=ProgressFact(key="patch_applied", value=False, scope="session"),
+                patch_errors=KnowledgeFact(key="patch_errors", value=[str(exc)], scope="session"),
             )
 
 
@@ -398,12 +398,12 @@ class Validate(SlaterAction):
 
         if errors:
             return Facts(
-                validation_passed=ProgressFact(key="validation_passed", value=False),
-                validation_errors=KnowledgeFact(key="validation_errors", value=errors),
+                validation_passed=ProgressFact(key="validation_passed", value=False, scope="session"),
+                validation_errors=KnowledgeFact(key="validation_errors", value=errors, scope="session"),
             )
 
         return Facts(
-            validation_passed=ProgressFact(key="validation_passed", value=True),
+            validation_passed=ProgressFact(key="validation_passed", value=True, scope="session"),
         )
 
 
