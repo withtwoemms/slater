@@ -70,6 +70,131 @@ class FactType(Enum):
 
 FactsValue = Union["Fact", "Facts"]
 
+# Type alias for scope literals
+Scope = Literal["iteration", "session", "persistent"]
+
+
+@dataclass(frozen=True)
+class Emission:
+    """
+    Declaration of a single fact emission.
+
+    Defines the scope and type of a fact that an action emits.
+    Used within EmissionSpec to declare the emission contract.
+
+    Args:
+        scope: The persistence scope ("iteration", "session", "persistent")
+        fact_type: The Fact subclass to use (default: Fact)
+        optional: If True, this emission may be omitted in build()
+    """
+    scope: Scope = "session"
+    fact_type: type[Fact] = Fact
+    optional: bool = False
+
+
+class EmissionSpec:
+    """
+    Declarative specification of facts an action emits.
+
+    EmissionSpec is the single source of truth for what an action produces.
+    The build() method validates that actual emissions match declarations,
+    eliminating drift between declared and actual behavior.
+
+    Usage:
+        class MyAction(SlaterAction):
+            emits = EmissionSpec(
+                result=Emission("session", KnowledgeFact),
+                ready=Emission("session", ProgressFact),
+                error=Emission("session", DiagnosticFact, optional=True),
+            )
+
+            def instruction(self) -> Facts:
+                # ... compute values ...
+                return self.emits.build(
+                    result=computed_result,
+                    ready=True,
+                )
+
+    The build() method:
+    - Raises if a key is passed that isn't declared
+    - Raises if a required (non-optional) key is missing
+    - Constructs Facts with correct scope and fact_type from declaration
+    """
+
+    def __init__(self, **emissions: Emission):
+        self._emissions: dict[str, Emission] = emissions
+
+    def __contains__(self, key: str) -> bool:
+        return key in self._emissions
+
+    def __iter__(self):
+        return iter(self._emissions)
+
+    def items(self):
+        """Iterate over (key, Emission) pairs."""
+        return self._emissions.items()
+
+    def keys(self) -> set[str]:
+        """Return all declared emission keys."""
+        return set(self._emissions.keys())
+
+    def get(self, key: str) -> Emission | None:
+        """Get emission declaration by key."""
+        return self._emissions.get(key)
+
+    def build(self, **values: Any) -> Facts:
+        """
+        Build Facts from values, validating against declarations.
+
+        Args:
+            **values: Key-value pairs where keys must match declared emissions
+
+        Returns:
+            Facts object with properly typed and scoped facts
+
+        Raises:
+            ValueError: If undeclared key is passed or required key is missing
+        """
+        # Check for undeclared keys
+        undeclared = set(values.keys()) - self.keys()
+        if undeclared:
+            raise ValueError(
+                f"Undeclared emission keys: {undeclared}. "
+                f"Declared keys are: {self.keys()}"
+            )
+
+        # Check for missing required keys
+        missing = set()
+        for key, emission in self._emissions.items():
+            if not emission.optional and key not in values:
+                missing.add(key)
+
+        if missing:
+            raise ValueError(
+                f"Missing required emission keys: {missing}"
+            )
+
+        # Build Facts with correct types and scopes
+        facts_kwargs = {}
+        for key, value in values.items():
+            emission = self._emissions[key]
+            fact = emission.fact_type(
+                key=key,
+                value=value,
+                scope=emission.scope,
+            )
+            facts_kwargs[key] = fact
+
+        return Facts(**facts_kwargs)
+
+    def to_dict(self) -> dict[str, Scope]:
+        """
+        Export as simple dict for static validation.
+
+        Returns dict mapping key -> scope (compatible with existing validation).
+        """
+        return {key: em.scope for key, em in self._emissions.items()}
+
 
 class Facts(dict[str, FactsValue]):
     """
