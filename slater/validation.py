@@ -4,19 +4,17 @@ Fact scope validation for Slater agents.
 This module provides static validation to catch scope-related bugs before runtime:
 - Facts referenced in transition rules must be emitted with durable scope
 - Facts referenced in control policy must be emitted with durable scope
-- Runtime drift detection warns when actual emissions don't match declarations
 
 See: docs/proposals/002-fact-scope-validator.md
 """
 
-import warnings
 from dataclasses import dataclass
 from enum import Enum
 from typing import Literal, Mapping
 
 from slater.policies import ControlPolicy, TransitionPolicy
 from slater.procedures import ProcedureTemplate
-from slater.types import Facts
+from slater.types import EmissionSpec, Facts
 
 
 Scope = Literal["iteration", "session", "persistent"]
@@ -82,9 +80,16 @@ def validate_fact_scopes(
             # Handle both class and instance
             action_cls = action if isinstance(action, type) else type(action)
 
-            if hasattr(action_cls, 'emits'):
+            if hasattr(action_cls, 'emits') and action_cls.emits is not None:
                 emits = action_cls.emits
-                for key, scope in emits.items():
+
+                # Handle EmissionSpec (preferred) or legacy dict
+                if isinstance(emits, EmissionSpec):
+                    emits_dict = emits.to_dict()
+                else:
+                    emits_dict = emits
+
+                for key, scope in emits_dict.items():
                     emissions[key] = (action_cls.__name__, scope)
 
     # 2. Check transition policy requirements
@@ -152,40 +157,9 @@ def _check_fact_scope(
     return []
 
 
-def check_emission_drift(action_cls: type, facts: Facts) -> None:
-    """
-    Warn if actual emissions don't match declared `emits`.
-
-    Call this after an action executes to catch drift between
-    declared and actual emissions.
-    """
-    declared: dict[str, Scope] = getattr(action_cls, 'emits', {})
-    actual: dict[str, Scope] = {key: fact.scope for key, fact in facts.iter_facts()}
-
-    action_name = action_cls.__name__
-
-    # Check declared facts are emitted with correct scope
-    for key, declared_scope in declared.items():
-        if key not in actual:
-            # Declared but not emitted - might be conditional, just warn
-            warnings.warn(
-                f"{action_name} declares emits['{key}'] but didn't emit it",
-                UserWarning,
-                stacklevel=3,
-            )
-        elif actual[key] != declared_scope:
-            warnings.warn(
-                f"{action_name} declares emits['{key}']='{declared_scope}' "
-                f"but emitted with scope='{actual[key]}'",
-                UserWarning,
-                stacklevel=3,
-            )
-
-    # Check for undeclared emissions
-    for key in actual:
-        if key not in declared:
-            warnings.warn(
-                f"{action_name} emitted '{key}' but doesn't declare it in `emits`",
-                UserWarning,
-                stacklevel=3,
-            )
+# NOTE: Runtime drift detection (check_emission_drift) has been removed.
+# The EmissionSpec.build() pattern prevents drift by construction:
+# - Actions declare emissions via EmissionSpec
+# - build() validates keys/scopes at call time
+# - Undeclared keys or missing required keys raise immediately
+# This eliminates the need for post-hoc runtime checking.
