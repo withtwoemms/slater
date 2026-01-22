@@ -240,8 +240,13 @@ class TestAgentSpecProcedureValidation:
                 procedures=procedures,
             )
 
-            assert len(w) == 1
-            assert "undefined Phases" in str(w[0].message)
+            # Check that at least one warning is about undefined Phases
+            # (other warnings may come from fact scope validation)
+            extra_proc_warnings = [
+                warning for warning in w
+                if "undefined Phases" in str(warning.message)
+            ]
+            assert len(extra_proc_warnings) == 1
 
 
 # ----------------------------------------------------------------------------

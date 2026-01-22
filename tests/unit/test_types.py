@@ -1,6 +1,14 @@
 import pytest
 
-from slater.types import Fact, Facts, IterationFacts, KnowledgeFact
+from slater.types import (
+    Emission,
+    EmissionSpec,
+    Fact,
+    Facts,
+    IterationFacts,
+    KnowledgeFact,
+    ProgressFact,
+)
 
 
 # ----------------------------------------------------------------------------
@@ -210,3 +218,170 @@ def test_iteration_facts_dataclass():
     assert isinstance(iteration_facts.by_action, dict)
     assert iteration_facts.by_action["Action1"]["fact1"].value == 123
     assert iteration_facts.by_action["Action2"]["fact2"].value == "abc"
+
+
+# ----------------------------------------------------------------------------
+# EmissionSpec - Declarative emission contract
+# ----------------------------------------------------------------------------
+
+
+class TestEmissionSpec:
+    """Tests for EmissionSpec builder pattern."""
+
+    def test_build_creates_facts_with_correct_types(self):
+        """build() creates Facts with declared fact types."""
+        spec = EmissionSpec(
+            plan=Emission("session", KnowledgeFact),
+            ready=Emission("session", ProgressFact),
+        )
+
+        facts = spec.build(plan={"steps": []}, ready=True)
+
+        assert isinstance(facts["plan"], KnowledgeFact)
+        assert isinstance(facts["ready"], ProgressFact)
+
+    def test_build_creates_facts_with_correct_scopes(self):
+        """build() creates Facts with declared scopes."""
+        spec = EmissionSpec(
+            data=Emission("session", KnowledgeFact),
+            flag=Emission("persistent", ProgressFact),
+            temp=Emission("iteration", Fact),
+        )
+
+        facts = spec.build(data="value", flag=True, temp=123)
+
+        assert facts["data"].scope == "session"
+        assert facts["flag"].scope == "persistent"
+        assert facts["temp"].scope == "iteration"
+
+    def test_build_raises_on_undeclared_key(self):
+        """build() raises ValueError for keys not in spec."""
+        spec = EmissionSpec(
+            declared=Emission("session", Fact),
+        )
+
+        with pytest.raises(ValueError) as exc_info:
+            spec.build(declared="ok", undeclared="oops")
+
+        assert "undeclared" in str(exc_info.value).lower()
+
+    def test_build_raises_on_missing_required_key(self):
+        """build() raises ValueError when required key is missing."""
+        spec = EmissionSpec(
+            required=Emission("session", Fact),
+            also_required=Emission("session", Fact),
+        )
+
+        with pytest.raises(ValueError) as exc_info:
+            spec.build(required="present")  # missing also_required
+
+        assert "also_required" in str(exc_info.value)
+
+    def test_build_allows_missing_optional_key(self):
+        """build() allows omitting keys marked as optional."""
+        spec = EmissionSpec(
+            required=Emission("session", Fact),
+            optional=Emission("session", Fact, optional=True),
+        )
+
+        facts = spec.build(required="present")
+
+        assert "required" in facts
+        assert "optional" not in facts
+
+    def test_build_includes_optional_key_when_provided(self):
+        """build() includes optional keys when provided."""
+        spec = EmissionSpec(
+            required=Emission("session", Fact),
+            optional=Emission("session", Fact, optional=True),
+        )
+
+        facts = spec.build(required="present", optional="also here")
+
+        assert "required" in facts
+        assert "optional" in facts
+        assert facts["optional"].value == "also here"
+
+    def test_to_dict_returns_key_scope_mapping(self):
+        """to_dict() returns dict[str, Scope] for validation."""
+        spec = EmissionSpec(
+            plan=Emission("session", KnowledgeFact),
+            ready=Emission("persistent", ProgressFact),
+        )
+
+        result = spec.to_dict()
+
+        assert result == {"plan": "session", "ready": "persistent"}
+
+    def test_keys_returns_declared_keys(self):
+        """keys() returns set of declared emission keys."""
+        spec = EmissionSpec(
+            a=Emission("session", Fact),
+            b=Emission("session", Fact),
+        )
+
+        assert spec.keys() == {"a", "b"}
+
+    def test_contains_checks_key_existence(self):
+        """__contains__ checks if key is declared."""
+        spec = EmissionSpec(
+            declared=Emission("session", Fact),
+        )
+
+        assert "declared" in spec
+        assert "undeclared" not in spec
+
+    def test_get_returns_emission_or_none(self):
+        """get() returns Emission for declared key, None otherwise."""
+        spec = EmissionSpec(
+            declared=Emission("session", KnowledgeFact),
+        )
+
+        assert spec.get("declared") is not None
+        assert spec.get("declared").fact_type == KnowledgeFact
+        assert spec.get("undeclared") is None
+
+    def test_empty_spec_builds_empty_facts(self):
+        """EmissionSpec with no declarations builds empty Facts."""
+        spec = EmissionSpec()
+
+        facts = spec.build()
+
+        assert len(facts) == 0
+
+    def test_fact_key_matches_mapping_key(self):
+        """build() creates Facts where fact.key == mapping key."""
+        spec = EmissionSpec(
+            my_key=Emission("session", Fact),
+        )
+
+        facts = spec.build(my_key="value")
+
+        assert facts["my_key"].key == "my_key"
+
+
+class TestEmission:
+    """Tests for Emission dataclass."""
+
+    def test_emission_defaults(self):
+        """Emission has sensible defaults."""
+        emission = Emission()
+
+        assert emission.scope == "session"
+        assert emission.fact_type == Fact
+        assert emission.optional is False
+
+    def test_emission_is_frozen(self):
+        """Emission is immutable (frozen dataclass)."""
+        emission = Emission("session", KnowledgeFact)
+
+        with pytest.raises(Exception):  # FrozenInstanceError
+            emission.scope = "iteration"
+
+    def test_emission_with_all_args(self):
+        """Emission accepts all arguments."""
+        emission = Emission("persistent", ProgressFact, optional=True)
+
+        assert emission.scope == "persistent"
+        assert emission.fact_type == ProgressFact
+        assert emission.optional is True
