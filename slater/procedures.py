@@ -20,6 +20,11 @@ class ProcedureTemplate:
         self.name = name
         self._actions: List[SlaterAction] = list(actions)
 
+    @property
+    def actions(self) -> List[SlaterAction]:
+        """Read-only access to template actions for introspection."""
+        return self._actions
+
     def materialize(self, state: dict[str, Any], ctx: IterationContextView) -> KeyedProcedure:
         """
         Produce a concrete Actionpack Procedure for a specific iteration.

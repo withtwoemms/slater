@@ -74,6 +74,125 @@ FactsValue = Union["Fact", "Facts"]
 Scope = Literal["iteration", "session", "persistent"]
 
 
+class Facts(dict[str, FactsValue]):
+    """
+    A keyed collection of Facts.
+
+    Supports nesting:
+      Facts(foo=Fact(...), repo=Facts(...))
+
+    Invariants:
+    - Each mapping key must be a valid identifier-like string.
+    - Leaf Facts must have fact.key == mapping key.
+    - Nested Facts are allowed and represent namespaces/groups.
+    """
+
+    def __init__(self, **facts: FactsValue):
+        super().__init__()
+
+        for key, item in facts.items():
+            # allow nested Facts
+            if isinstance(item, Facts):
+                # store nested group as-is
+                self[key] = item
+                continue
+
+            # allow leaf Fact
+            if not isinstance(item, Fact):
+                raise TypeError(
+                    f"Facts values must be Fact or Facts instances; got {type(item)} for '{key}'"
+                )
+
+            # enforce key alignment on leaf facts
+            if item.key != key:
+                raise ValueError(
+                    f"Fact key mismatch: mapping key '{key}' != fact.key '{item.key}'"
+                )
+
+            self[key] = item
+
+    @classmethod
+    def empty(cls) -> "Facts":
+        return cls()
+
+    def iter_facts(self, prefix: str = "") -> Iterator[tuple[str, Fact]]:
+        """
+        Yield all leaf Facts as (fully_qualified_key, Fact).
+
+        Example:
+          Facts(repo=Facts(file_count=Fact(...))).iter_facts()
+          -> ("repo.file_count", Fact(...))
+        """
+        for key, item in self.items():
+            fq = f"{prefix}.{key}" if prefix else key
+            if isinstance(item, Facts):
+                yield from item.iter_facts(prefix=fq)
+            else:
+                # item is Fact
+                yield (fq, item)
+
+    def serialize(self) -> dict[str, dict]:
+        """
+        Flatten nested Facts into fully-qualified keys -> serialized Fact dicts (JSON-safe).
+        """
+        flat: dict[str, dict] = {}
+
+        def walk(prefix: str, node: "Facts"):
+            for key, item in node.items():
+                fq_key = f"{prefix}.{key}" if prefix else key
+
+                if isinstance(item, Facts):
+                    walk(fq_key, item)
+                else:
+                    # item is a Fact (or subclass)
+                    flat[fq_key] = item.serialize()
+
+        walk("", self)
+        return flat
+
+    def flatten(self) -> Dict[str, Fact]:
+        """
+        Structure transformation: nested Facts tree -> flat dict with dot-notation keys.
+
+        This is a pure structural operation - returns Fact objects (not serialized).
+        """
+        return {fq: fact for fq, fact in self.iter_facts()}
+
+    @classmethod
+    def unflatten(cls, flat: Dict[str, Fact]) -> "Facts":
+        """
+        Structure transformation: flat dict with dot-notation keys -> nested Facts tree.
+
+        This is a pure structural operation - values must already be Fact objects.
+        """
+        root = Facts()
+
+        for fq_key, fact in flat.items():
+            parts = fq_key.split(".")
+            current = root
+            for part in parts[:-1]:
+                if part not in current:
+                    current[part] = Facts()
+                current = current[part]  # type: ignore
+            current[parts[-1]] = fact
+
+        return root
+
+    @classmethod
+    def deserialize(cls, flat: Dict[str, dict]) -> "Facts":
+        """
+        Reconstitute Facts from serialized form (inverse of serialize).
+
+        Composes: Fact.deserialize (type transform) + unflatten (structure transform)
+        """
+        return cls.unflatten({k: Fact.deserialize(v) for k, v in flat.items()})
+
+
+# ----------------------------------------------------------------------------
+# EmissionSpec - Declarative emission contract for actions
+# ----------------------------------------------------------------------------
+
+
 @dataclass(frozen=True)
 class Emission:
     """
@@ -196,118 +315,9 @@ class EmissionSpec:
         return {key: em.scope for key, em in self._emissions.items()}
 
 
-class Facts(dict[str, FactsValue]):
-    """
-    A keyed collection of Facts.
-
-    Supports nesting:
-      Facts(foo=Fact(...), repo=Facts(...))
-
-    Invariants:
-    - Each mapping key must be a valid identifier-like string.
-    - Leaf Facts must have fact.key == mapping key.
-    - Nested Facts are allowed and represent namespaces/groups.
-    """
-
-    def __init__(self, **facts: FactsValue):
-        super().__init__()
-
-        for key, item in facts.items():
-            # allow nested Facts
-            if isinstance(item, Facts):
-                # store nested group as-is
-                self[key] = item
-                continue
-
-            # allow leaf Fact
-            if not isinstance(item, Fact):
-                raise TypeError(
-                    f"Facts values must be Fact or Facts instances; got {type(item)} for '{key}'"
-                )
-
-            # enforce key alignment on leaf facts
-            if item.key != key:
-                raise ValueError(
-                    f"Fact key mismatch: mapping key '{key}' != fact.key '{item.key}'"
-                )
-
-            self[key] = item
-
-    @classmethod
-    def empty(cls) -> "Facts":
-        return cls()
-
-    def iter_facts(self, prefix: str = "") -> Iterator[tuple[str, Fact]]:
-        """
-        Yield all leaf Facts as (fully_qualified_key, Fact).
-
-        Example:
-          Facts(repo=Facts(file_count=Fact(...))).iter_facts()
-          -> ("repo.file_count", Fact(...))
-        """
-        for key, item in self.items():
-            fq = f"{prefix}.{key}" if prefix else key
-            if isinstance(item, Facts):
-                yield from item.iter_facts(prefix=fq)
-            else:
-                # item is Fact
-                yield (fq, item)
-
-    def serialize(self) -> dict[str, dict]:
-        """
-        Flatten nested Facts into fully-qualified keys -> serialized Fact dicts (JSON-safe).
-        """
-        flat: dict[str, dict] = {}
-
-        def walk(prefix: str, node: "Facts"):
-            for key, item in node.items():
-                fq_key = f"{prefix}.{key}" if prefix else key
-
-                if isinstance(item, Facts):
-                    walk(fq_key, item)
-                else:
-                    # item is a Fact (or subclass)
-                    flat[fq_key] = item.serialize()
-
-        walk("", self)
-        return flat
-
-    def flatten(self) -> Dict[str, Fact]:
-        """
-        Structure transformation: nested Facts tree -> flat dict with dot-notation keys.
-
-        This is a pure structural operation - returns Fact objects (not serialized).
-        """
-        return {fq: fact for fq, fact in self.iter_facts()}
-
-    @classmethod
-    def unflatten(cls, flat: Dict[str, Fact]) -> "Facts":
-        """
-        Structure transformation: flat dict with dot-notation keys -> nested Facts tree.
-
-        This is a pure structural operation - values must already be Fact objects.
-        """
-        root = Facts()
-
-        for fq_key, fact in flat.items():
-            parts = fq_key.split(".")
-            current = root
-            for part in parts[:-1]:
-                if part not in current:
-                    current[part] = Facts()
-                current = current[part]  # type: ignore
-            current[parts[-1]] = fact
-
-        return root
-
-    @classmethod
-    def deserialize(cls, flat: Dict[str, dict]) -> "Facts":
-        """
-        Reconstitute Facts from serialized form (inverse of serialize).
-
-        Composes: Fact.deserialize (type transform) + unflatten (structure transform)
-        """
-        return cls.unflatten({k: Fact.deserialize(v) for k, v in flat.items()})
+# ----------------------------------------------------------------------------
+# IterationFacts - Provenance-preserving iteration record
+# ----------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
