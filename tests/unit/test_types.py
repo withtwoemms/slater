@@ -1,6 +1,7 @@
 import pytest
 
 from slater.types import (
+    DiagnosticFact,
     Emission,
     EmissionSpec,
     Fact,
@@ -277,30 +278,30 @@ class TestEmissionSpec:
 
         assert "also_required" in str(exc_info.value)
 
-    def test_build_allows_missing_optional_key(self):
-        """build() allows omitting keys marked as optional."""
+    def test_build_allows_missing_non_required_key(self):
+        """build() allows omitting keys marked as required=False."""
         spec = EmissionSpec(
-            required=Emission("session", Fact),
-            optional=Emission("session", Fact, optional=True),
+            always=Emission("session", Fact),
+            conditional=Emission("session", Fact, required=False),
         )
 
-        facts = spec.build(required="present")
+        facts = spec.build(always="present")
 
-        assert "required" in facts
-        assert "optional" not in facts
+        assert "always" in facts
+        assert "conditional" not in facts
 
-    def test_build_includes_optional_key_when_provided(self):
-        """build() includes optional keys when provided."""
+    def test_build_includes_non_required_key_when_provided(self):
+        """build() includes non-required keys when provided."""
         spec = EmissionSpec(
-            required=Emission("session", Fact),
-            optional=Emission("session", Fact, optional=True),
+            always=Emission("session", Fact),
+            conditional=Emission("session", Fact, required=False),
         )
 
-        facts = spec.build(required="present", optional="also here")
+        facts = spec.build(always="present", conditional="also here")
 
-        assert "required" in facts
-        assert "optional" in facts
-        assert facts["optional"].value == "also here"
+        assert "always" in facts
+        assert "conditional" in facts
+        assert facts["conditional"].value == "also here"
 
     def test_to_dict_returns_key_scope_mapping(self):
         """to_dict() returns dict[str, Scope] for validation."""
@@ -369,7 +370,7 @@ class TestEmission:
 
         assert emission.scope == "session"
         assert emission.fact_type == Fact
-        assert emission.optional is False
+        assert emission.required is True
 
     def test_emission_is_frozen(self):
         """Emission is immutable (frozen dataclass)."""
@@ -380,8 +381,63 @@ class TestEmission:
 
     def test_emission_with_all_args(self):
         """Emission accepts all arguments."""
-        emission = Emission("persistent", ProgressFact, optional=True)
+        emission = Emission("persistent", ProgressFact, required=False)
 
         assert emission.scope == "persistent"
         assert emission.fact_type == ProgressFact
-        assert emission.optional is True
+        assert emission.required is False
+
+
+class TestConditionalEmissions:
+    """Tests for actions that emit different facts based on outcome."""
+
+    def test_success_path_emissions(self):
+        """Action emitting success-path facts only."""
+        spec = EmissionSpec(
+            result=Emission("session", KnowledgeFact),
+            success=Emission("session", ProgressFact),
+            error=Emission("session", DiagnosticFact, required=False),
+        )
+
+        # Success path - no error emitted
+        facts = spec.build(result={"data": "value"}, success=True)
+
+        assert "result" in facts
+        assert "success" in facts
+        assert "error" not in facts
+
+    def test_failure_path_emissions(self):
+        """Action emitting failure-path facts only."""
+        spec = EmissionSpec(
+            result=Emission("session", KnowledgeFact, required=False),
+            success=Emission("session", ProgressFact),
+            error=Emission("session", DiagnosticFact, required=False),
+        )
+
+        # Failure path - no result, but error emitted
+        facts = spec.build(success=False, error="Something went wrong")
+
+        assert "result" not in facts
+        assert "success" in facts
+        assert facts["success"].value is False
+        assert "error" in facts
+
+    def test_either_or_emissions(self):
+        """Action emitting mutually exclusive facts."""
+        spec = EmissionSpec(
+            # Always emitted
+            attempted=Emission("session", ProgressFact),
+            # One of these based on outcome
+            patch_summary=Emission("session", KnowledgeFact, required=False),
+            patch_errors=Emission("session", DiagnosticFact, required=False),
+        )
+
+        # Success case
+        success_facts = spec.build(attempted=True, patch_summary="Applied 3 changes")
+        assert "patch_summary" in success_facts
+        assert "patch_errors" not in success_facts
+
+        # Failure case
+        failure_facts = spec.build(attempted=True, patch_errors=["File not found"])
+        assert "patch_summary" not in failure_facts
+        assert "patch_errors" in failure_facts

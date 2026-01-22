@@ -204,11 +204,13 @@ class Emission:
     Args:
         scope: The persistence scope ("iteration", "session", "persistent")
         fact_type: The Fact subclass to use (default: Fact)
-        optional: If True, this emission may be omitted in build()
+        required: If False, this emission may be omitted in build().
+                  Use required=False for conditional emissions that depend
+                  on action outcome (e.g., error facts only emitted on failure).
     """
     scope: Scope = "session"
     fact_type: type[Fact] = Fact
-    optional: bool = False
+    required: bool = True
 
 
 class EmissionSpec:
@@ -285,7 +287,7 @@ class EmissionSpec:
         # Check for missing required keys
         missing = set()
         for key, emission in self._emissions.items():
-            if not emission.optional and key not in values:
+            if emission.required and key not in values:
                 missing.add(key)
 
         if missing:
