@@ -186,6 +186,14 @@ class GatherContext(SlaterAction):
     """
     requires_state = True
 
+    emits = EmissionSpec(
+        repo_root=Emission("session", KnowledgeFact),
+        repo_tree=Emission("session", KnowledgeFact),
+        language=Emission("session", KnowledgeFact),
+        build_system=Emission("session", KnowledgeFact),
+        context_ready=Emission("session", ProgressFact),
+    )
+
     def instruction(self) -> Facts:
         state = self.state
 
@@ -232,12 +240,12 @@ class GatherContext(SlaterAction):
 
         # ---- return discovered context ----
 
-        return Facts(
-            repo_root=KnowledgeFact(key="repo_root", value=str(repo_root)),
-            repo_tree=KnowledgeFact(key="repo_tree", value=repo_tree),
-            language=KnowledgeFact(key="language", value=language),
-            build_system=KnowledgeFact(key="build_system", value=build_system),
-            context_ready=ProgressFact(key="context_ready", value=True, scope="session"),
+        return self.emits.build(
+            repo_root=str(repo_root),
+            repo_tree=repo_tree,
+            language=language,
+            build_system=build_system,
+            context_ready=True,
         )
 
 
@@ -250,6 +258,19 @@ class AnalyzeRepo(SlaterAction):
     on repo_tree and related facts already present in state.
     """
     requires_state = True
+
+    # Nested EmissionSpec: 'repo' group maps to a logical table in DB StateStore
+    emits = EmissionSpec(
+        repo=EmissionSpec(
+            file_count=Emission("session", KnowledgeFact),
+            languages=Emission("session", KnowledgeFact),
+            has_tests=Emission("session", KnowledgeFact),
+            entrypoints=Emission("session", KnowledgeFact),
+            build_system=Emission("session", KnowledgeFact),
+            notes=Emission("session", KnowledgeFact),
+        ),
+        analysis_ready=Emission("session", ProgressFact),
+    )
 
     def instruction(self) -> Facts:
         state = self.state
@@ -320,18 +341,18 @@ class AnalyzeRepo(SlaterAction):
         if build_system is None:
             notes.append("Build system could not be confidently inferred.")
 
-        # ---- return analysis ----
+        # ---- return analysis (nested dict for nested EmissionSpec) ----
 
-        return Facts(
-            repo=Facts(
-                file_count=KnowledgeFact(key="file_count", value=file_count),
-                languages=KnowledgeFact(key="languages", value=sorted(languages)),
-                has_tests=KnowledgeFact(key="has_tests", value=has_tests),
-                entrypoints=KnowledgeFact(key="entrypoints", value=entrypoints),
-                build_system=KnowledgeFact(key="build_system", value=build_system),
-                notes=KnowledgeFact(key="notes", value=notes),
-            ),
-            analysis_ready=ProgressFact(key="analysis_ready", value=True, scope="session"),
+        return self.emits.build(
+            repo={
+                "file_count": file_count,
+                "languages": sorted(languages),
+                "has_tests": has_tests,
+                "entrypoints": entrypoints,
+                "build_system": build_system,
+                "notes": notes,
+            },
+            analysis_ready=True,
         )
 
 
@@ -343,6 +364,16 @@ class ApplyPatch(SlaterAction):
     - Materializes the current plan as a markdown file in the repo root.
     """
     requires_state = True
+
+    # Emission contract with conditional outputs
+    emits = EmissionSpec(
+        # Always emitted
+        patch_applied=Emission("session", ProgressFact),
+        # Success path only
+        patch_summary=Emission("session", KnowledgeFact, required=False),
+        # Failure path only
+        patch_errors=Emission("session", KnowledgeFact, required=False),
+    )
 
     def instruction(self) -> Facts:
         state = self.state
@@ -370,15 +401,15 @@ class ApplyPatch(SlaterAction):
 
             patch_file.write_text("\n".join(lines))
 
-            return Facts(
-                patch_applied=ProgressFact(key="patch_applied", value=True, scope="session"),
-                patch_summary=KnowledgeFact(key="patch_summary", value=f"Wrote refactoring plan to {patch_file.name}", scope="session"),
+            return self.emits.build(
+                patch_applied=True,
+                patch_summary=f"Wrote refactoring plan to {patch_file.name}",
             )
 
         except Exception as exc:
-            return Facts(
-                patch_applied=ProgressFact(key="patch_applied", value=False, scope="session"),
-                patch_errors=KnowledgeFact(key="patch_errors", value=[str(exc)], scope="session"),
+            return self.emits.build(
+                patch_applied=False,
+                patch_errors=[str(exc)],
             )
 
 
@@ -395,6 +426,14 @@ class Validate(SlaterAction):
     - Solicit human feedback
     """
     requires_state = True
+
+    # Emission contract with conditional outputs
+    emits = EmissionSpec(
+        # Always emitted
+        validation_passed=Emission("session", ProgressFact),
+        # Only on failure
+        validation_errors=Emission("session", KnowledgeFact, required=False),
+    )
 
     def instruction(self) -> Facts:
         state = self.state
@@ -425,13 +464,13 @@ class Validate(SlaterAction):
             errors.extend(patch_errors)
 
         if errors:
-            return Facts(
-                validation_passed=ProgressFact(key="validation_passed", value=False, scope="session"),
-                validation_errors=KnowledgeFact(key="validation_errors", value=errors, scope="session"),
+            return self.emits.build(
+                validation_passed=False,
+                validation_errors=errors,
             )
 
-        return Facts(
-            validation_passed=ProgressFact(key="validation_passed", value=True, scope="session"),
+        return self.emits.build(
+            validation_passed=True,
         )
 
 
@@ -441,6 +480,11 @@ class Finalize(SlaterAction):
     emitting a human-readable summary of the outcome.
     """
     requires_state = True
+
+    emits = EmissionSpec(
+        task_complete=Emission("session", ProgressFact),
+        final_summary=Emission("session", KnowledgeFact),
+    )
 
     def instruction(self) -> Facts:
         state = self.state
@@ -470,7 +514,7 @@ class Finalize(SlaterAction):
 
         final_summary = "\n".join(summary_lines) if summary_lines else "Task completed."
 
-        return Facts(
-            task_complete=ProgressFact(key="task_complete", value=True, scope="session"),
-            final_summary=KnowledgeFact(key="final_summary", value=final_summary),
+        return self.emits.build(
+            task_complete=True,
+            final_summary=final_summary,
         )
