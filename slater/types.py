@@ -213,6 +213,10 @@ class Emission:
     required: bool = True
 
 
+# Type for EmissionSpec entries: either a leaf Emission or nested EmissionSpec
+EmissionEntry = Union[Emission, "EmissionSpec"]
+
+
 class EmissionSpec:
     """
     Declarative specification of facts an action emits.
@@ -221,46 +225,81 @@ class EmissionSpec:
     The build() method validates that actual emissions match declarations,
     eliminating drift between declared and actual behavior.
 
-    Usage:
-        class MyAction(SlaterAction):
+    Supports nested specs for hierarchical fact grouping (maps to DB tables):
+
+        class AnalyzeRepo(SlaterAction):
             emits = EmissionSpec(
-                result=Emission("session", KnowledgeFact),
-                ready=Emission("session", ProgressFact),
-                error=Emission("session", DiagnosticFact, optional=True),
+                repo=EmissionSpec(
+                    file_count=Emission("session", KnowledgeFact),
+                    languages=Emission("session", KnowledgeFact),
+                ),
+                analysis_ready=Emission("session", ProgressFact),
             )
 
             def instruction(self) -> Facts:
-                # ... compute values ...
                 return self.emits.build(
-                    result=computed_result,
-                    ready=True,
+                    repo={"file_count": 42, "languages": ["python"]},
+                    analysis_ready=True,
                 )
 
     The build() method:
     - Raises if a key is passed that isn't declared
-    - Raises if a required (non-optional) key is missing
+    - Raises if a required key is missing
     - Constructs Facts with correct scope and fact_type from declaration
+    - Recursively builds nested Facts for nested EmissionSpecs
     """
 
-    def __init__(self, **emissions: Emission):
-        self._emissions: dict[str, Emission] = emissions
+    def __init__(self, *, required: bool = True, **emissions: EmissionEntry):
+        """
+        Args:
+            required: If False, this entire spec group may be omitted when nested.
+            **emissions: Mapping of keys to Emission or nested EmissionSpec.
+        """
+        self._emissions: dict[str, EmissionEntry] = emissions
+        self.required = required
 
     def __contains__(self, key: str) -> bool:
+        """Check if key exists (supports dot-notation for nested keys)."""
+        if "." in key:
+            parts = key.split(".", 1)
+            if parts[0] in self._emissions:
+                nested = self._emissions[parts[0]]
+                if isinstance(nested, EmissionSpec):
+                    return parts[1] in nested
+            return False
         return key in self._emissions
 
     def __iter__(self):
         return iter(self._emissions)
 
     def items(self):
-        """Iterate over (key, Emission) pairs."""
+        """Iterate over (key, EmissionEntry) pairs (top-level only)."""
         return self._emissions.items()
 
     def keys(self) -> set[str]:
-        """Return all declared emission keys."""
+        """Return top-level declared emission keys."""
         return set(self._emissions.keys())
 
-    def get(self, key: str) -> Emission | None:
-        """Get emission declaration by key."""
+    def flat_keys(self, prefix: str = "") -> set[str]:
+        """Return all keys flattened with dot-notation for nested specs."""
+        result: set[str] = set()
+        for key, entry in self._emissions.items():
+            fq_key = f"{prefix}.{key}" if prefix else key
+            if isinstance(entry, EmissionSpec):
+                result.update(entry.flat_keys(prefix=fq_key))
+            else:
+                result.add(fq_key)
+        return result
+
+    def get(self, key: str) -> EmissionEntry | None:
+        """Get emission declaration by key (supports dot-notation)."""
+        if "." in key:
+            parts = key.split(".", 1)
+            if parts[0] in self._emissions:
+                nested = self._emissions[parts[0]]
+                if isinstance(nested, EmissionSpec):
+                    return nested.get(parts[1])
+            return None
         return self._emissions.get(key)
 
     def build(self, **values: Any) -> Facts:
@@ -268,7 +307,8 @@ class EmissionSpec:
         Build Facts from values, validating against declarations.
 
         Args:
-            **values: Key-value pairs where keys must match declared emissions
+            **values: Key-value pairs where keys must match declared emissions.
+                      For nested EmissionSpecs, pass a dict as the value.
 
         Returns:
             Facts object with properly typed and scoped facts
@@ -286,8 +326,9 @@ class EmissionSpec:
 
         # Check for missing required keys
         missing = set()
-        for key, emission in self._emissions.items():
-            if emission.required and key not in values:
+        for key, entry in self._emissions.items():
+            is_required = entry.required if isinstance(entry, (Emission, EmissionSpec)) else True
+            if is_required and key not in values:
                 missing.add(key)
 
         if missing:
@@ -298,23 +339,43 @@ class EmissionSpec:
         # Build Facts with correct types and scopes
         facts_kwargs = {}
         for key, value in values.items():
-            emission = self._emissions[key]
-            fact = emission.fact_type(
-                key=key,
-                value=value,
-                scope=emission.scope,
-            )
-            facts_kwargs[key] = fact
+            entry = self._emissions[key]
+
+            if isinstance(entry, EmissionSpec):
+                # Nested spec: expect dict, recursively build
+                if not isinstance(value, dict):
+                    raise TypeError(
+                        f"Expected dict for nested EmissionSpec '{key}', "
+                        f"got {type(value).__name__}"
+                    )
+                nested_facts = entry.build(**value)
+                facts_kwargs[key] = nested_facts
+            else:
+                # Leaf emission: build Fact
+                fact = entry.fact_type(
+                    key=key,
+                    value=value,
+                    scope=entry.scope,
+                )
+                facts_kwargs[key] = fact
 
         return Facts(**facts_kwargs)
 
-    def to_dict(self) -> dict[str, Scope]:
+    def to_dict(self, prefix: str = "") -> dict[str, Scope]:
         """
-        Export as simple dict for static validation.
+        Export as flattened dict for static validation.
 
-        Returns dict mapping key -> scope (compatible with existing validation).
+        Returns dict mapping fully-qualified key -> scope.
+        Nested specs are flattened with dot-notation keys.
         """
-        return {key: em.scope for key, em in self._emissions.items()}
+        result: dict[str, Scope] = {}
+        for key, entry in self._emissions.items():
+            fq_key = f"{prefix}.{key}" if prefix else key
+            if isinstance(entry, EmissionSpec):
+                result.update(entry.to_dict(prefix=fq_key))
+            else:
+                result[fq_key] = entry.scope
+        return result
 
 
 # ----------------------------------------------------------------------------

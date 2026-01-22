@@ -441,3 +441,207 @@ class TestConditionalEmissions:
         failure_facts = spec.build(attempted=True, patch_errors=["File not found"])
         assert "patch_summary" not in failure_facts
         assert "patch_errors" in failure_facts
+
+
+class TestNestedEmissionSpec:
+    """Tests for nested EmissionSpec (hierarchical fact grouping)."""
+
+    def test_nested_build_creates_nested_facts(self):
+        """build() creates nested Facts structure from nested EmissionSpec."""
+        spec = EmissionSpec(
+            repo=EmissionSpec(
+                file_count=Emission("session", KnowledgeFact),
+                languages=Emission("session", KnowledgeFact),
+            ),
+            analysis_ready=Emission("session", ProgressFact),
+        )
+
+        facts = spec.build(
+            repo={"file_count": 42, "languages": ["python", "go"]},
+            analysis_ready=True,
+        )
+
+        assert "repo" in facts
+        assert isinstance(facts["repo"], Facts)
+        assert facts["repo"]["file_count"].value == 42
+        assert facts["repo"]["languages"].value == ["python", "go"]
+        assert facts["analysis_ready"].value is True
+
+    def test_nested_preserves_scopes(self):
+        """Nested emissions preserve their declared scopes."""
+        spec = EmissionSpec(
+            group=EmissionSpec(
+                persistent_fact=Emission("persistent", KnowledgeFact),
+                session_fact=Emission("session", KnowledgeFact),
+            ),
+        )
+
+        facts = spec.build(
+            group={"persistent_fact": "durable", "session_fact": "temporary"},
+        )
+
+        assert facts["group"]["persistent_fact"].scope == "persistent"
+        assert facts["group"]["session_fact"].scope == "session"
+
+    def test_nested_preserves_fact_types(self):
+        """Nested emissions preserve their declared fact types."""
+        spec = EmissionSpec(
+            group=EmissionSpec(
+                progress=Emission("session", ProgressFact),
+                knowledge=Emission("session", KnowledgeFact),
+            ),
+        )
+
+        facts = spec.build(
+            group={"progress": True, "knowledge": {"data": "value"}},
+        )
+
+        assert isinstance(facts["group"]["progress"], ProgressFact)
+        assert isinstance(facts["group"]["knowledge"], KnowledgeFact)
+
+    def test_nested_validates_undeclared_keys(self):
+        """build() raises on undeclared keys in nested dict."""
+        spec = EmissionSpec(
+            group=EmissionSpec(
+                declared=Emission("session", Fact),
+            ),
+        )
+
+        with pytest.raises(ValueError) as exc_info:
+            spec.build(group={"declared": "ok", "undeclared": "oops"})
+
+        assert "undeclared" in str(exc_info.value).lower()
+
+    def test_nested_validates_missing_required_keys(self):
+        """build() raises on missing required keys in nested spec."""
+        spec = EmissionSpec(
+            group=EmissionSpec(
+                required_key=Emission("session", Fact),
+            ),
+        )
+
+        with pytest.raises(ValueError) as exc_info:
+            spec.build(group={})
+
+        assert "required_key" in str(exc_info.value)
+
+    def test_nested_allows_non_required_nested_spec(self):
+        """Nested EmissionSpec with required=False can be omitted."""
+        spec = EmissionSpec(
+            always=Emission("session", Fact),
+            optional_group=EmissionSpec(
+                required=False,
+                nested_fact=Emission("session", Fact),
+            ),
+        )
+
+        facts = spec.build(always="present")
+
+        assert "always" in facts
+        assert "optional_group" not in facts
+
+    def test_nested_includes_non_required_when_provided(self):
+        """Non-required nested spec is included when provided."""
+        spec = EmissionSpec(
+            always=Emission("session", Fact),
+            optional_group=EmissionSpec(
+                required=False,
+                nested_fact=Emission("session", Fact),
+            ),
+        )
+
+        facts = spec.build(
+            always="present",
+            optional_group={"nested_fact": "included"},
+        )
+
+        assert "always" in facts
+        assert "optional_group" in facts
+        assert facts["optional_group"]["nested_fact"].value == "included"
+
+    def test_nested_requires_dict_value(self):
+        """build() raises TypeError if non-dict passed for nested spec."""
+        spec = EmissionSpec(
+            group=EmissionSpec(
+                fact=Emission("session", Fact),
+            ),
+        )
+
+        with pytest.raises(TypeError) as exc_info:
+            spec.build(group="not a dict")
+
+        assert "dict" in str(exc_info.value).lower()
+
+    def test_to_dict_flattens_nested_specs(self):
+        """to_dict() returns flattened keys with dot-notation."""
+        spec = EmissionSpec(
+            repo=EmissionSpec(
+                file_count=Emission("session", KnowledgeFact),
+                languages=Emission("persistent", KnowledgeFact),
+            ),
+            ready=Emission("session", ProgressFact),
+        )
+
+        result = spec.to_dict()
+
+        assert result == {
+            "repo.file_count": "session",
+            "repo.languages": "persistent",
+            "ready": "session",
+        }
+
+    def test_flat_keys_returns_all_nested_keys(self):
+        """flat_keys() returns all keys with dot-notation."""
+        spec = EmissionSpec(
+            repo=EmissionSpec(
+                file_count=Emission("session", Fact),
+                languages=Emission("session", Fact),
+            ),
+            ready=Emission("session", Fact),
+        )
+
+        assert spec.flat_keys() == {"repo.file_count", "repo.languages", "ready"}
+
+    def test_contains_with_dot_notation(self):
+        """__contains__ supports dot-notation for nested keys."""
+        spec = EmissionSpec(
+            repo=EmissionSpec(
+                file_count=Emission("session", Fact),
+            ),
+        )
+
+        assert "repo" in spec
+        assert "repo.file_count" in spec
+        assert "repo.undeclared" not in spec
+
+    def test_get_with_dot_notation(self):
+        """get() supports dot-notation for nested keys."""
+        spec = EmissionSpec(
+            repo=EmissionSpec(
+                file_count=Emission("session", KnowledgeFact),
+            ),
+        )
+
+        emission = spec.get("repo.file_count")
+        assert emission is not None
+        assert emission.fact_type == KnowledgeFact
+
+        assert spec.get("repo.undeclared") is None
+
+    def test_deeply_nested_specs(self):
+        """EmissionSpec supports multiple levels of nesting."""
+        spec = EmissionSpec(
+            level1=EmissionSpec(
+                level2=EmissionSpec(
+                    deep_fact=Emission("session", KnowledgeFact),
+                ),
+            ),
+        )
+
+        facts = spec.build(
+            level1={"level2": {"deep_fact": "deep value"}},
+        )
+
+        assert facts["level1"]["level2"]["deep_fact"].value == "deep value"
+        assert "level1.level2.deep_fact" in spec
+        assert spec.to_dict() == {"level1.level2.deep_fact": "session"}
