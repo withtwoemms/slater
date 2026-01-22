@@ -230,74 +230,74 @@ class TestEmissionSpec:
     """Tests for EmissionSpec builder pattern."""
 
     def test_build_creates_facts_with_correct_types(self):
-        """build() creates Facts with declared fact types."""
+        """facts() creates Facts with declared fact types."""
         spec = EmissionSpec(
             plan=Emission("session", KnowledgeFact),
             ready=Emission("session", ProgressFact),
         )
 
-        facts = spec.build(plan={"steps": []}, ready=True)
+        facts = spec.facts(plan={"steps": []}, ready=True)
 
         assert isinstance(facts["plan"], KnowledgeFact)
         assert isinstance(facts["ready"], ProgressFact)
 
     def test_build_creates_facts_with_correct_scopes(self):
-        """build() creates Facts with declared scopes."""
+        """facts() creates Facts with declared scopes."""
         spec = EmissionSpec(
             data=Emission("session", KnowledgeFact),
             flag=Emission("persistent", ProgressFact),
             temp=Emission("iteration", Fact),
         )
 
-        facts = spec.build(data="value", flag=True, temp=123)
+        facts = spec.facts(data="value", flag=True, temp=123)
 
         assert facts["data"].scope == "session"
         assert facts["flag"].scope == "persistent"
         assert facts["temp"].scope == "iteration"
 
     def test_build_raises_on_undeclared_key(self):
-        """build() raises ValueError for keys not in spec."""
+        """facts() raises ValueError for keys not in spec."""
         spec = EmissionSpec(
             declared=Emission("session", Fact),
         )
 
         with pytest.raises(ValueError) as exc_info:
-            spec.build(declared="ok", undeclared="oops")
+            spec.facts(declared="ok", undeclared="oops")
 
         assert "undeclared" in str(exc_info.value).lower()
 
     def test_build_raises_on_missing_required_key(self):
-        """build() raises ValueError when required key is missing."""
+        """facts() raises ValueError when required key is missing."""
         spec = EmissionSpec(
             required=Emission("session", Fact),
             also_required=Emission("session", Fact),
         )
 
         with pytest.raises(ValueError) as exc_info:
-            spec.build(required="present")  # missing also_required
+            spec.facts(required="present")  # missing also_required
 
         assert "also_required" in str(exc_info.value)
 
     def test_build_allows_missing_non_required_key(self):
-        """build() allows omitting keys marked as required=False."""
+        """facts() allows omitting keys marked as required=False."""
         spec = EmissionSpec(
             always=Emission("session", Fact),
             conditional=Emission("session", Fact, required=False),
         )
 
-        facts = spec.build(always="present")
+        facts = spec.facts(always="present")
 
         assert "always" in facts
         assert "conditional" not in facts
 
     def test_build_includes_non_required_key_when_provided(self):
-        """build() includes non-required keys when provided."""
+        """facts() includes non-required keys when provided."""
         spec = EmissionSpec(
             always=Emission("session", Fact),
             conditional=Emission("session", Fact, required=False),
         )
 
-        facts = spec.build(always="present", conditional="also here")
+        facts = spec.facts(always="present", conditional="also here")
 
         assert "always" in facts
         assert "conditional" in facts
@@ -346,17 +346,17 @@ class TestEmissionSpec:
         """EmissionSpec with no declarations builds empty Facts."""
         spec = EmissionSpec()
 
-        facts = spec.build()
+        facts = spec.facts()
 
         assert len(facts) == 0
 
     def test_fact_key_matches_mapping_key(self):
-        """build() creates Facts where fact.key == mapping key."""
+        """facts() creates Facts where fact.key == mapping key."""
         spec = EmissionSpec(
             my_key=Emission("session", Fact),
         )
 
-        facts = spec.build(my_key="value")
+        facts = spec.facts(my_key="value")
 
         assert facts["my_key"].key == "my_key"
 
@@ -400,7 +400,7 @@ class TestConditionalEmissions:
         )
 
         # Success path - no error emitted
-        facts = spec.build(result={"data": "value"}, success=True)
+        facts = spec.facts(result={"data": "value"}, success=True)
 
         assert "result" in facts
         assert "success" in facts
@@ -415,7 +415,7 @@ class TestConditionalEmissions:
         )
 
         # Failure path - no result, but error emitted
-        facts = spec.build(success=False, error="Something went wrong")
+        facts = spec.facts(success=False, error="Something went wrong")
 
         assert "result" not in facts
         assert "success" in facts
@@ -433,12 +433,12 @@ class TestConditionalEmissions:
         )
 
         # Success case
-        success_facts = spec.build(attempted=True, patch_summary="Applied 3 changes")
+        success_facts = spec.facts(attempted=True, patch_summary="Applied 3 changes")
         assert "patch_summary" in success_facts
         assert "patch_errors" not in success_facts
 
         # Failure case
-        failure_facts = spec.build(attempted=True, patch_errors=["File not found"])
+        failure_facts = spec.facts(attempted=True, patch_errors=["File not found"])
         assert "patch_summary" not in failure_facts
         assert "patch_errors" in failure_facts
 
@@ -447,7 +447,7 @@ class TestNestedEmissionSpec:
     """Tests for nested EmissionSpec (hierarchical fact grouping)."""
 
     def test_nested_build_creates_nested_facts(self):
-        """build() creates nested Facts structure from nested EmissionSpec."""
+        """facts() creates nested Facts structure from nested EmissionSpec."""
         spec = EmissionSpec(
             repo=EmissionSpec(
                 file_count=Emission("session", KnowledgeFact),
@@ -456,7 +456,7 @@ class TestNestedEmissionSpec:
             analysis_ready=Emission("session", ProgressFact),
         )
 
-        facts = spec.build(
+        facts = spec.facts(
             repo={"file_count": 42, "languages": ["python", "go"]},
             analysis_ready=True,
         )
@@ -476,7 +476,7 @@ class TestNestedEmissionSpec:
             ),
         )
 
-        facts = spec.build(
+        facts = spec.facts(
             group={"persistent_fact": "durable", "session_fact": "temporary"},
         )
 
@@ -492,7 +492,7 @@ class TestNestedEmissionSpec:
             ),
         )
 
-        facts = spec.build(
+        facts = spec.facts(
             group={"progress": True, "knowledge": {"data": "value"}},
         )
 
@@ -500,7 +500,7 @@ class TestNestedEmissionSpec:
         assert isinstance(facts["group"]["knowledge"], KnowledgeFact)
 
     def test_nested_validates_undeclared_keys(self):
-        """build() raises on undeclared keys in nested dict."""
+        """facts() raises on undeclared keys in nested dict."""
         spec = EmissionSpec(
             group=EmissionSpec(
                 declared=Emission("session", Fact),
@@ -508,12 +508,12 @@ class TestNestedEmissionSpec:
         )
 
         with pytest.raises(ValueError) as exc_info:
-            spec.build(group={"declared": "ok", "undeclared": "oops"})
+            spec.facts(group={"declared": "ok", "undeclared": "oops"})
 
         assert "undeclared" in str(exc_info.value).lower()
 
     def test_nested_validates_missing_required_keys(self):
-        """build() raises on missing required keys in nested spec."""
+        """facts() raises on missing required keys in nested spec."""
         spec = EmissionSpec(
             group=EmissionSpec(
                 required_key=Emission("session", Fact),
@@ -521,7 +521,7 @@ class TestNestedEmissionSpec:
         )
 
         with pytest.raises(ValueError) as exc_info:
-            spec.build(group={})
+            spec.facts(group={})
 
         assert "required_key" in str(exc_info.value)
 
@@ -535,7 +535,7 @@ class TestNestedEmissionSpec:
             ),
         )
 
-        facts = spec.build(always="present")
+        facts = spec.facts(always="present")
 
         assert "always" in facts
         assert "optional_group" not in facts
@@ -550,7 +550,7 @@ class TestNestedEmissionSpec:
             ),
         )
 
-        facts = spec.build(
+        facts = spec.facts(
             always="present",
             optional_group={"nested_fact": "included"},
         )
@@ -560,7 +560,7 @@ class TestNestedEmissionSpec:
         assert facts["optional_group"]["nested_fact"].value == "included"
 
     def test_nested_requires_dict_value(self):
-        """build() raises TypeError if non-dict passed for nested spec."""
+        """facts() raises TypeError if non-dict passed for nested spec."""
         spec = EmissionSpec(
             group=EmissionSpec(
                 fact=Emission("session", Fact),
@@ -568,7 +568,7 @@ class TestNestedEmissionSpec:
         )
 
         with pytest.raises(TypeError) as exc_info:
-            spec.build(group="not a dict")
+            spec.facts(group="not a dict")
 
         assert "dict" in str(exc_info.value).lower()
 
@@ -638,7 +638,7 @@ class TestNestedEmissionSpec:
             ),
         )
 
-        facts = spec.build(
+        facts = spec.facts(
             level1={"level2": {"deep_fact": "deep value"}},
         )
 

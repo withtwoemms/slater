@@ -204,7 +204,7 @@ class Emission:
     Args:
         scope: The persistence scope ("iteration", "session", "persistent")
         fact_type: The Fact subclass to use (default: Fact)
-        required: If False, this emission may be omitted in build().
+        required: If False, this emission may be omitted in facts().
                   Use required=False for conditional emissions that depend
                   on action outcome (e.g., error facts only emitted on failure).
     """
@@ -222,7 +222,7 @@ class EmissionSpec:
     Declarative specification of facts an action emits.
 
     EmissionSpec is the single source of truth for what an action produces.
-    The build() method validates that actual emissions match declarations,
+    The facts() method validates that actual emissions match declarations,
     eliminating drift between declared and actual behavior.
 
     Supports nested specs for hierarchical fact grouping (maps to DB tables):
@@ -242,7 +242,7 @@ class EmissionSpec:
                     analysis_ready=True,
                 )
 
-    The build() method:
+    The facts() method:
     - Raises if a key is passed that isn't declared
     - Raises if a required key is missing
     - Constructs Facts with correct scope and fact_type from declaration
@@ -302,7 +302,7 @@ class EmissionSpec:
             return None
         return self._emissions.get(key)
 
-    def build(self, **values: Any) -> Facts:
+    def facts(self, **values: Any) -> Facts:
         """
         Build Facts from values, validating against declarations.
 
@@ -348,7 +348,7 @@ class EmissionSpec:
                         f"Expected dict for nested EmissionSpec '{key}', "
                         f"got {type(value).__name__}"
                     )
-                nested_facts = entry.build(**value)
+                nested_facts = entry.facts(**value)
                 facts_kwargs[key] = nested_facts
             else:
                 # Leaf emission: build Fact

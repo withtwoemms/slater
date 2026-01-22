@@ -158,8 +158,8 @@ def _check_fact_scope(
 
 
 # NOTE: Runtime drift detection (check_emission_drift) has been removed.
-# The EmissionSpec.build() pattern prevents drift by construction:
+# The EmissionSpec.facts() pattern prevents drift by construction:
 # - Actions declare emissions via EmissionSpec
-# - build() validates keys/scopes at call time
+# - facts() validates keys/scopes at call time
 # - Undeclared keys or missing required keys raise immediately
 # This eliminates the need for post-hoc runtime checking.

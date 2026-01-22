@@ -173,7 +173,7 @@ class ProposePlan(SlaterAction):
         }
 
         # ---- build Facts using declared emission contract ----
-        return self.emits.build(
+        return self.emits.facts(
             plan=plan,
             plan_ready=True,
         )
@@ -240,7 +240,7 @@ class GatherContext(SlaterAction):
 
         # ---- return discovered context ----
 
-        return self.emits.build(
+        return self.emits.facts(
             repo_root=str(repo_root),
             repo_tree=repo_tree,
             language=language,
@@ -343,7 +343,7 @@ class AnalyzeRepo(SlaterAction):
 
         # ---- return analysis (nested dict for nested EmissionSpec) ----
 
-        return self.emits.build(
+        return self.emits.facts(
             repo={
                 "file_count": file_count,
                 "languages": sorted(languages),
@@ -401,13 +401,13 @@ class ApplyPatch(SlaterAction):
 
             patch_file.write_text("\n".join(lines))
 
-            return self.emits.build(
+            return self.emits.facts(
                 patch_applied=True,
                 patch_summary=f"Wrote refactoring plan to {patch_file.name}",
             )
 
         except Exception as exc:
-            return self.emits.build(
+            return self.emits.facts(
                 patch_applied=False,
                 patch_errors=[str(exc)],
             )
@@ -464,12 +464,12 @@ class Validate(SlaterAction):
             errors.extend(patch_errors)
 
         if errors:
-            return self.emits.build(
+            return self.emits.facts(
                 validation_passed=False,
                 validation_errors=errors,
             )
 
-        return self.emits.build(
+        return self.emits.facts(
             validation_passed=True,
         )
 
@@ -514,7 +514,7 @@ class Finalize(SlaterAction):
 
         final_summary = "\n".join(summary_lines) if summary_lines else "Task completed."
 
-        return self.emits.build(
+        return self.emits.facts(
             task_complete=True,
             final_summary=final_summary,
         )
